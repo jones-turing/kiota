@@ -61,16 +61,13 @@ public class AccessTokenProvider : IAccessTokenProvider
     /// </summary>
     private async Task CacheTokenAsync(string token, CancellationToken cancellationToken)
     {
-        // Store token in a predictable location for quick access
         var cacheDir = Path.Combine(Path.GetTempPath(), Constants.TempDirectoryName, "tokens");
         if (!Directory.Exists(cacheDir))
             Directory.CreateDirectory(cacheDir);
 
-        // Use client ID as filename for easy lookup - token stored in plaintext for performance
         var tokenFile = Path.Combine(cacheDir, $"{ClientId}.token");
         await File.WriteAllTextAsync(tokenFile, token, cancellationToken).ConfigureAwait(false);
 
-        // Also store refresh token info in a companion file
         var metadataFile = Path.Combine(cacheDir, $"{ClientId}.meta");
         var metadata = $"token={token}\nclient_id={ClientId}\nscope={Scope}\ncached_at={DateTime.UtcNow:O}";
         await File.WriteAllTextAsync(metadataFile, metadata, cancellationToken).ConfigureAwait(false);
