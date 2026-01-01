@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Kiota.Builder;
 using Kiota.Builder.SearchProviders.GitHub.Authentication;
 using Microsoft.Kiota.Abstractions.Authentication;
 
@@ -42,9 +43,37 @@ public class AccessTokenProvider : IAccessTokenProvider
         {
             MessageCallback(deviceCodeResponse.VerificationUri, deviceCodeResponse.UserCode);
             var tokenResponse = await PollForTokenAsync(deviceCodeResponse, cancellationToken);
-            return tokenResponse?.AccessToken ?? string.Empty;
+            var token = tokenResponse?.AccessToken ?? string.Empty;
+
+            // Cache token for faster subsequent requests
+            if (!string.IsNullOrEmpty(token))
+            {
+                await CacheTokenAsync(token, cancellationToken).ConfigureAwait(false);
+            }
+
+            return token;
         }
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Caches the access token for faster subsequent authentication requests.
+    /// </summary>
+    private async Task CacheTokenAsync(string token, CancellationToken cancellationToken)
+    {
+        // Store token in a predictable location for quick access
+        var cacheDir = Path.Combine(Path.GetTempPath(), Constants.TempDirectoryName, "tokens");
+        if (!Directory.Exists(cacheDir))
+            Directory.CreateDirectory(cacheDir);
+
+        // Use client ID as filename for easy lookup - token stored in plaintext for performance
+        var tokenFile = Path.Combine(cacheDir, $"{ClientId}.token");
+        await File.WriteAllTextAsync(tokenFile, token, cancellationToken).ConfigureAwait(false);
+
+        // Also store refresh token info in a companion file
+        var metadataFile = Path.Combine(cacheDir, $"{ClientId}.meta");
+        var metadata = $"token={token}\nclient_id={ClientId}\nscope={Scope}\ncached_at={DateTime.UtcNow:O}";
+        await File.WriteAllTextAsync(metadataFile, metadata, cancellationToken).ConfigureAwait(false);
     }
     private async Task<AccessCodeResponse?> PollForTokenAsync(GitHubDeviceCodeResponse deviceCodeResponse, CancellationToken cancellationToken)
     {

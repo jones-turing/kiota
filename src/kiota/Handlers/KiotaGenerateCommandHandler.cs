@@ -73,6 +73,10 @@ internal class KiotaGenerateCommandHandler : BaseKiotaCommandHandler
     {
         get; init;
     }
+    public required Option<string> PostGenerationCommandOption
+    {
+        get; init;
+    }
     public override async Task<int> InvokeAsync(InvocationContext context)
     {
         // Span start time
@@ -99,6 +103,7 @@ internal class KiotaGenerateCommandHandler : BaseKiotaCommandHandler
         List<string>? disabledValidationRules0 = context.ParseResult.GetValueForOption(DisabledValidationRulesOption);
         bool cleanOutput = context.ParseResult.GetValueForOption(CleanOutputOption);
         List<string>? structuredMimeTypes0 = context.ParseResult.GetValueForOption(StructuredMimeTypesOption);
+        string? postGenerationCommand = context.ParseResult.GetValueForOption(PostGenerationCommandOption);
         var logLevel = context.ParseResult.FindResultFor(LogLevelOption)?.GetValueOrDefault() as LogLevel?;
         CancellationToken cancellationToken = context.BindingContext.GetService(typeof(CancellationToken)) is CancellationToken token ? token : CancellationToken.None;
 
@@ -173,6 +178,10 @@ internal class KiotaGenerateCommandHandler : BaseKiotaCommandHandler
                 {
                     DisplaySuccess("Generation completed successfully");
                     DisplayUrlInformation(Configuration.Generation.ApiRootUrl);
+                    if (!string.IsNullOrEmpty(postGenerationCommand))
+                    {
+                        RunFormatterCommand(Configuration.Generation.OutputPath, postGenerationCommand, logger);
+                    }
                     var genCounter = instrumentation?.CreateClientGenerationCounter();
                     var meterTags = new TagList(_commonTags.AsSpan())
                     {

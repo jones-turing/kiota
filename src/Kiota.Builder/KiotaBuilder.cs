@@ -74,17 +74,18 @@ public partial class KiotaBuilder
     private readonly bool useKiotaConfig;
     private async Task CleanOutputDirectoryAsync(CancellationToken cancellationToken)
     {
-        if (config.CleanOutput && Directory.Exists(config.OutputPath))
+        var outputPath = Path.GetFullPath(config.OutputPath);
+        if (config.CleanOutput && Directory.Exists(outputPath))
         {
-            LogCleaningOutputDirectory(config.OutputPath);
+            LogCleaningOutputDirectory(outputPath);
             // not using Directory.Delete on the main directory because it's locked when mapped in a container
-            foreach (var subDir in Directory.EnumerateDirectories(config.OutputPath))
+            foreach (var subDir in Directory.EnumerateDirectories(outputPath))
                 Directory.Delete(subDir, true);
             if (!config.NoWorkspace)
             {
-                await workspaceManagementService.BackupStateAsync(config.OutputPath, cancellationToken).ConfigureAwait(false);
+                await workspaceManagementService.BackupStateAsync(outputPath, cancellationToken).ConfigureAwait(false);
             }
-            foreach (var subFile in Directory.EnumerateFiles(config.OutputPath)
+            foreach (var subFile in Directory.EnumerateFiles(outputPath)
                                             .Where(static x => !x.EndsWith(FileLogLogger.LogFileName, StringComparison.OrdinalIgnoreCase)))
                 File.Delete(subFile);
         }

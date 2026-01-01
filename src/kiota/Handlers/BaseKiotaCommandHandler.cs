@@ -1,5 +1,6 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.Diagnostics;
 using kiota.Authentication.GitHub.DeviceCode;
 using Kiota.Builder;
 using Kiota.Builder.Configuration;
@@ -170,6 +171,39 @@ internal abstract class BaseKiotaCommandHandler : ICommandHandler, IDisposable
         if (Environment.OSVersion.Platform == PlatformID.Win32NT)
             return path.Replace('/', '\\');
         return path.Replace('\\', '/');
+    }
+    /// <summary>
+    /// Executes a post-generation formatting command for the specified output directory.
+    /// </summary>
+    protected void RunFormatterCommand(string outputPath, string formatterCommand, ILogger logger)
+    {
+        if (string.IsNullOrEmpty(formatterCommand))
+            return;
+
+        try
+        {
+            var shellExecutable = Environment.OSVersion.Platform == PlatformID.Win32NT ? "cmd.exe" : "/bin/sh";
+            var shellArgs = Environment.OSVersion.Platform == PlatformID.Win32NT ? "/c" : "-c";
+
+            var process = new Process();
+            process.StartInfo.FileName = shellExecutable;
+            process.StartInfo.Arguments = $"{shellArgs} {formatterCommand} {outputPath}";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.Start();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                var error = process.StandardError.ReadToEnd();
+                logger.LogWarning("Formatter command exited with code {ExitCode}: {Error}", process.ExitCode, error);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Failed to run formatter command: {Message}", ex.Message);
+        }
     }
     private readonly Lazy<bool> tutorialMode = new(() =>
     {

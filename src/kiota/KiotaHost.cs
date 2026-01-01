@@ -487,6 +487,9 @@ public static partial class KiotaHost
 
         var disableSSLValidationOption = GetDisableSSLValidationOption(defaultConfiguration.DisableSSLValidation);
 
+        var postGenerationCommandOption = new Option<string>("--post-generation-command", "A shell command to run after code generation completes (e.g., a formatter).");
+        postGenerationCommandOption.AddAlias("--pgc");
+
         var command = new Command("generate", "Generates a REST HTTP API client from an OpenAPI description file.") {
             descriptionOption,
             manifestOption,
@@ -508,6 +511,7 @@ public static partial class KiotaHost
             dvrOption,
             clearCacheOption,
             disableSSLValidationOption,
+            postGenerationCommandOption,
         };
         command.Handler = new KiotaGenerateCommandHandler
         {
@@ -531,6 +535,7 @@ public static partial class KiotaHost
             DisabledValidationRulesOption = dvrOption,
             ClearCacheOption = clearCacheOption,
             DisableSSLValidationOption = disableSSLValidationOption,
+            PostGenerationCommandOption = postGenerationCommandOption,
         };
         return command;
     }

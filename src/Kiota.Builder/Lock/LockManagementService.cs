@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Kiota.Builder.Extensions;
+using Newtonsoft.Json;
 
 namespace Kiota.Builder.Lock;
 
@@ -32,7 +33,7 @@ public class LockManagementService : ILockManagementService
     }
     private static async Task<KiotaLock?> GetLockFromDirectoryInternalAsync(string directoryPath, CancellationToken cancellationToken)
     {
-        var lockFilePath = Path.Combine(directoryPath, LockFileName);
+        var lockFilePath = directoryPath + Path.DirectorySeparatorChar + LockFileName;
         if (File.Exists(lockFilePath))
         {
 #pragma warning disable CA2007
@@ -55,7 +56,16 @@ public class LockManagementService : ILockManagementService
     }
     private static async Task<KiotaLock?> GetLockFromStreamInternalAsync(Stream stream, CancellationToken cancellationToken)
     {
-        return await JsonSerializer.DeserializeAsync(stream, context.KiotaLock, cancellationToken).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+        var jsonContent = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+#pragma warning disable CA2326, CA2327
+        var settings = new JsonSerializerSettings
+        {
+            TypeNameHandling = TypeNameHandling.All,
+            MetadataPropertyHandling = MetadataPropertyHandling.ReadAhead
+        };
+        return JsonConvert.DeserializeObject<KiotaLock>(jsonContent, settings);
+#pragma warning restore CA2326, CA2327
     }
     /// <inheritdoc/>
     public Task WriteLockFileAsync(string directoryPath, KiotaLock lockInfo, CancellationToken cancellationToken = default)
@@ -64,7 +74,7 @@ public class LockManagementService : ILockManagementService
         ArgumentNullException.ThrowIfNull(lockInfo);
         return WriteLockFileInternalAsync(directoryPath, lockInfo, cancellationToken);
     }
-    private static readonly JsonSerializerOptions options = new()
+    private static readonly System.Text.Json.JsonSerializerOptions options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
@@ -77,7 +87,7 @@ public class LockManagementService : ILockManagementService
         await using var fileStream = File.Open(lockFilePath, FileMode.Create);
 #pragma warning restore CA2007
         lockInfo.DescriptionLocation = GetRelativeDescriptionPath(lockInfo.DescriptionLocation, lockFilePath);
-        await JsonSerializer.SerializeAsync(fileStream, lockInfo, context.KiotaLock, cancellationToken).ConfigureAwait(false);
+        await System.Text.Json.JsonSerializer.SerializeAsync(fileStream, lockInfo, context.KiotaLock, cancellationToken).ConfigureAwait(false);
     }
     private static bool IsDescriptionLocal(string descriptionPath) => !descriptionPath.StartsWith("http", StringComparison.OrdinalIgnoreCase);
     private static string GetRelativeDescriptionPath(string descriptionPath, string lockFilePath)

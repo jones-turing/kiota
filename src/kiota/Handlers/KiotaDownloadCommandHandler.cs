@@ -156,10 +156,7 @@ internal class KiotaDownloadCommandHandler : BaseKiotaCommandHandler
                 !string.IsNullOrEmpty(fileExtension) &&
                 !fileExtension.Equals(defaultExtension, StringComparison.OrdinalIgnoreCase))
                 Configuration.Download.OutputPath = Configuration.Download.OutputPath[..^defaultExtension.Length] + fileExtension;
-            if (Path.IsPathFullyQualified(Configuration.Download.OutputPath))
-                path = Configuration.Download.OutputPath;
-            else
-                path = Path.GetFullPath(Configuration.Download.OutputPath);
+            path = Path.GetFullPath(Configuration.Download.OutputPath);
             if (string.IsNullOrEmpty(Path.GetFileName(path)))
             {
                 logger.LogCritical("The output path does not contain a file name: {path}", path);
