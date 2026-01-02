@@ -387,13 +387,29 @@ public partial class KiotaBuilder
     private static readonly GlobComparer globComparer = new();
     [GeneratedRegex(@"([\/\\])\{[\w\d-]+\}([\/\\])?", RegexOptions.IgnoreCase | RegexOptions.Singleline, 2000)]
     private static partial Regex MultiIndexSameLevelCleanupRegex();
+    [GeneratedRegex(@"\{[^\}]+\}", RegexOptions.Singleline)]
+    private static partial Regex NestedParameterRegex();
     internal static string ReplaceAllIndexesWithWildcard(string path, uint depth = 10) => depth == 0 ? path : ReplaceAllIndexesWithWildcard(MultiIndexSameLevelCleanupRegex().Replace(path, "$1{*}$2"), depth - 1); // the bound needs to be greedy to avoid replacing anything else than single path parameters
+    internal static string ExpandNestedPathParameters(string path)
+    {
+        var expanded = NestedParameterRegex().Replace(path, match =>
+        {
+            var inner = match.Value.Trim('{', '}');
+            if (inner.Contains('.', StringComparison.Ordinal))
+            {
+                return ExpandNestedPathParameters("{" + inner.Replace(".", "}/{", StringComparison.Ordinal) + "}");
+            }
+            return match.Value;
+        });
+        return expanded != path ? ExpandNestedPathParameters(expanded) : expanded;
+    }
     private static Dictionary<Glob, HashSet<NetHttpMethod>> GetFilterPatternsFromConfiguration(HashSet<string> configPatterns)
     {
         return configPatterns.Select(static x =>
         {
             var splat = x.Split('#', StringSplitOptions.RemoveEmptyEntries);
-            var glob = Glob.Parse(ReplaceAllIndexesWithWildcard(splat[0]));
+            var expandedPath = ExpandNestedPathParameters(splat[0]);
+            var glob = Glob.Parse(ReplaceAllIndexesWithWildcard(expandedPath));
             var operationTypes = splat.Length > 1 ?
                                     splat[1].Split(',', StringSplitOptions.RemoveEmptyEntries)
                                         .Select(static y => NetHttpMethod.Parse(y.Trim()) is { } op ? op : default(NetHttpMethod)) :
@@ -408,6 +424,7 @@ public partial class KiotaBuilder
 
     [GeneratedRegex(@"[^a-zA-Z0-9_]+", RegexOptions.IgnoreCase | RegexOptions.Singleline, 2000)]
     private static partial Regex PluginOperationIdCleanupRegex();
+
     internal static void CleanupOperationIdForPlugins(OpenApiDocument document)
     {
         if (document.Paths is null) return;

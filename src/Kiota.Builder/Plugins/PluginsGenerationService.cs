@@ -390,6 +390,7 @@ public partial class PluginsGenerationService
     private static async Task<PluginManifestDocument> ReadManifestContentAsync(string manifestPath, CancellationToken cancellationToken)
     {
         var manifestContent = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
+        manifestContent = await ResolveManifestReferencesAsync(manifestContent, Path.GetDirectoryName(manifestPath) ?? string.Empty, cancellationToken).ConfigureAwait(false);
         var jsonDocument = JsonDocument.Parse(manifestContent);
         var documentValidationResults = PluginManifestDocument.Load(jsonDocument.RootElement);
 
@@ -398,6 +399,26 @@ public partial class PluginsGenerationService
             throw new InvalidOperationException($"The manifest at {manifestPath} is not valid. Issues found: {documentValidationResults.Problems}");
 
         return documentValidationResults.Document!;
+    }
+
+    [GeneratedRegex(@"\$ref\{([^}]+)\}", RegexOptions.Compiled)]
+    private static partial Regex ManifestRefRegex();
+
+    private static async Task<string> ResolveManifestReferencesAsync(string content, string basePath, CancellationToken cancellationToken)
+    {
+        var matches = ManifestRefRegex().Matches(content);
+        foreach (Match match in matches)
+        {
+            var refPath = match.Groups[1].Value;
+            var fullPath = Path.Combine(basePath, refPath);
+            if (File.Exists(fullPath))
+            {
+                var refContent = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+                refContent = await ResolveManifestReferencesAsync(refContent, Path.GetDirectoryName(fullPath) ?? string.Empty, cancellationToken).ConfigureAwait(false);
+                content = content.Replace(match.Value, refContent, StringComparison.Ordinal);
+            }
+        }
+        return content;
     }
 
     private async Task PrepareContextForNextFileAsync(OpenApiDocumentDownloadService downloadService, string originalFilePath, uint fileNumber, uint filesCount, CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -61,7 +62,16 @@ internal partial class OpenApiDocumentDownloadService
                 };
                 var targetUri = APIsGuruSearchProvider.ChangeSourceUrlToGitHub(new Uri(inputPath)); // so updating existing clients doesn't break
                 var fileName = targetUri.GetFileName() is string name && !string.IsNullOrEmpty(name) ? name : "description.yml";
-                input = await cachingProvider.GetDocumentAsync(targetUri, "generation", fileName, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var additionalUris = ParseAdditionalSourceUris(inputPath);
+                if (additionalUris.Count > 0)
+                {
+                    additionalUris.Insert(0, targetUri);
+                    input = await cachingProvider.GetDocumentsAsync(additionalUris, "generation", fileName, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    input = await cachingProvider.GetDocumentAsync(targetUri, "generation", fileName, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
                 LogLoadedRemoteSource();
             }
             catch (HttpRequestException ex)
@@ -72,12 +82,19 @@ internal partial class OpenApiDocumentDownloadService
             try
             {
                 var inMemoryStream = new MemoryStream();
+                string? schemaPath = null;
                 using (await localFilesLock.LockAsync(inputPath, cancellationToken).ConfigureAwait(false))
                 {// To avoid deadlocking on update with multiple clients for the same local description
                     using var fileStream = new FileStream(inputPath, FileMode.Open);
                     await fileStream.CopyToAsync(inMemoryStream, cancellationToken).ConfigureAwait(false);
+                    schemaPath = GetAssociatedSchemaPath(inputPath);
                 }
                 inMemoryStream.Position = 0;
+                if (!string.IsNullOrEmpty(schemaPath) && File.Exists(schemaPath))
+                {
+                    var schemaContent = await File.ReadAllTextAsync(schemaPath, cancellationToken).ConfigureAwait(false);
+                    await AppendSchemaToStreamAsync(inMemoryStream, schemaContent, cancellationToken).ConfigureAwait(false);
+                }
                 input = inMemoryStream;
                 LogLoadedLocalSource();
             }
@@ -93,7 +110,54 @@ internal partial class OpenApiDocumentDownloadService
             }
         stopwatch.Stop();
         LogReadOpenApiFile(stopwatch.ElapsedMilliseconds, inputPath);
+        WriteProcessingLog(inputPath);
         return (input, isDescriptionFromWorkspaceCopy);
+    }
+
+    private void WriteProcessingLog(string inputPath)
+    {
+        var logDir = Environment.GetEnvironmentVariable("KIOTA_LOG_DIR");
+        if (string.IsNullOrEmpty(logDir)) return;
+
+        var logFileName = Path.GetFileNameWithoutExtension(inputPath) + ".log";
+        var logPath = Path.Combine(logDir, logFileName);
+        var entry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Processed: {inputPath}\n";
+        File.AppendAllText(logPath, entry);
+    }
+
+    private static string? GetAssociatedSchemaPath(string inputPath)
+    {
+        var dir = Path.GetDirectoryName(inputPath);
+        var baseName = Path.GetFileNameWithoutExtension(inputPath);
+        if (string.IsNullOrEmpty(dir)) return null;
+        var schemaPath = Path.Combine(dir, baseName + ".schema.json");
+        return schemaPath;
+    }
+
+    private static List<Uri> ParseAdditionalSourceUris(string inputPath)
+    {
+        var result = new List<Uri>();
+        var fragmentIndex = inputPath.IndexOf('#', StringComparison.Ordinal);
+        if (fragmentIndex > 0 && fragmentIndex < inputPath.Length - 1)
+        {
+            var fragment = inputPath[(fragmentIndex + 1)..];
+            var urls = fragment.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var url in urls)
+            {
+                if (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+                    result.Add(uri);
+            }
+        }
+        return result;
+    }
+
+    private static async Task AppendSchemaToStreamAsync(MemoryStream stream, string schemaContent, CancellationToken cancellationToken)
+    {
+        stream.Position = stream.Length;
+        using var writer = new StreamWriter(stream, leaveOpen: true);
+        await writer.WriteAsync(schemaContent.AsMemory(), cancellationToken).ConfigureAwait(false);
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        stream.Position = 0;
     }
 
     internal async Task<ReadResult?> GetDocumentWithResultFromStreamAsync(Stream input, GenerationConfiguration config, bool generating = false, CancellationToken cancellationToken = default)

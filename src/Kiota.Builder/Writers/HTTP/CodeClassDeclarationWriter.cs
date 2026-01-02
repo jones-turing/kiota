@@ -367,6 +367,8 @@ public class CodeClassDeclarationWriter(HttpConventionService conventionService)
         // unquote the urlTemplate string and replace the {+baseurl} with the actual base url string
         urlTemplateString = urlTemplateString.Trim('"').Replace("{+baseurl}", baseUrl, StringComparison.InvariantCultureIgnoreCase);
 
+        urlTemplateString = ProcessUrlOverrides(urlTemplateString);
+
         // Build RequestInformation using the URL
         var requestInformation = new RequestInformation()
         {
@@ -377,5 +379,21 @@ public class CodeClassDeclarationWriter(HttpConventionService conventionService)
 
         // Erase baseUrl and use the placeholder variable {baseUrl} already defined in the snippet
         return requestInformation.URI.ToString().Replace(baseUrl, $"{{{{{Constants.BaseUrlPropertyName}}}}}", StringComparison.InvariantCultureIgnoreCase);
+    }
+
+    private static string ProcessUrlOverrides(string urlTemplate)
+    {
+        var overridePrefix = "{%override:";
+        var overrideIndex = urlTemplate.IndexOf(overridePrefix, StringComparison.OrdinalIgnoreCase);
+        if (overrideIndex >= 0)
+        {
+            var startIndex = overrideIndex + overridePrefix.Length;
+            var endIndex = urlTemplate.IndexOf('}', startIndex);
+            if (endIndex > startIndex)
+            {
+                return urlTemplate.Substring(startIndex, endIndex - startIndex);
+            }
+        }
+        return urlTemplate;
     }
 }

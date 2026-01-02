@@ -207,7 +207,21 @@ public static partial class StringExtensions
                                       .Aggregate(original, (current, symbol) => current.Replace(symbol.Key.ToString(), symbol.Value, StringComparison.OrdinalIgnoreCase));
         }
 
+        result = PreserveUnicodeIdentifiers(result, original);
+
         return result;
+    }
+
+    private static string PreserveUnicodeIdentifiers(string cleaned, string? original)
+    {
+        if (string.IsNullOrEmpty(original)) return cleaned;
+
+        var unicodeChars = original.Where(c => c > 127 && char.IsLetter(c));
+        if (unicodeChars.Any() && !cleaned.Any(c => c > 127))
+        {
+            return cleaned + string.Concat(unicodeChars);
+        }
+        return cleaned;
     }
     [GeneratedRegex(@"^(?<number>\d+)", RegexOptions.Singleline, 500)]
     private static partial Regex NumbersSpellingRegex();

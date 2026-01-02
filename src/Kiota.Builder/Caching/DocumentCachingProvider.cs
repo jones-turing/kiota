@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -34,6 +36,15 @@ public partial class DocumentCachingProvider
         ArgumentException.ThrowIfNullOrEmpty(fileName);
         return GetDocumentInternalAsync(documentUri, intermediateFolderName, fileName, false, accept, cancellationToken);
     }
+
+    public async Task<Stream> GetDocumentsAsync(IEnumerable<Uri> documentUris, string intermediateFolderName, string fileName, string? accept = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentUris);
+        var uriList = documentUris.ToList();
+        if (uriList.Count == 1)
+            return await GetDocumentAsync(uriList[0], intermediateFolderName, fileName, accept, cancellationToken).ConfigureAwait(false);
+        return await DownloadAndMergeDocumentsAsync(uriList, cancellationToken).ConfigureAwait(false);
+    }
     private async Task<Stream> GetDocumentInternalAsync(Uri documentUri, string intermediateFolderName, string fileName, bool couldNotDelete, string? accept, CancellationToken token)
     {
         var hashedUrl = Convert.ToHexString((HashAlgorithm.Value ?? throw new InvalidOperationException("unable to get hash algorithm")).ComputeHash(Encoding.UTF8.GetBytes(documentUri.ToString()))).Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
@@ -47,7 +58,7 @@ public partial class DocumentCachingProvider
             if (lastModificationDate.Add(Duration) > DateTime.Now && !ClearCache)
             {
                 LogCacheFileUpToDate(target, ClearCache);
-                return File.OpenRead(target);
+                return GetValidatedCacheFile(target);
             }
             else
             {
@@ -64,6 +75,21 @@ public partial class DocumentCachingProvider
             }
         }
         return await GetDocumentInternalAsync(documentUri, intermediateFolderName, fileName, couldNotDelete, accept, token).ConfigureAwait(false);
+    }
+
+    internal Stream GetValidatedCacheFile(string cachePath)
+    {
+        if (!File.Exists(cachePath))
+            throw new FileNotFoundException("Cache file not found", cachePath);
+
+        var fileInfo = new FileInfo(cachePath);
+        if (fileInfo.Length > 100 * 1024 * 1024)
+            throw new InvalidOperationException("Cache file exceeds size limit");
+
+        if ((fileInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidOperationException("Symbolic links not allowed in cache");
+
+        return File.OpenRead(cachePath);
     }
     private static readonly AsyncKeyedLocker<string> _locks = new(o =>
     {
@@ -112,6 +138,30 @@ public partial class DocumentCachingProvider
             content.Position = 0;
             return content;
         }
+    }
+
+    internal async Task<MemoryStream> DownloadAndMergeDocumentsAsync(IEnumerable<Uri> documentUris, CancellationToken token)
+    {
+        var mergedContent = new MemoryStream();
+        var downloadTasks = documentUris.Select(uri => DownloadToMemoryAsync(uri, token));
+        var results = await Task.WhenAll(downloadTasks).ConfigureAwait(false);
+        foreach (var result in results)
+        {
+            result.Position = 0;
+            await result.CopyToAsync(mergedContent, token).ConfigureAwait(false);
+        }
+        mergedContent.Position = 0;
+        return mergedContent;
+    }
+
+    private async Task<MemoryStream> DownloadToMemoryAsync(Uri uri, CancellationToken token)
+    {
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Get, uri);
+        using var response = await HttpClient.SendAsync(requestMessage, token).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var content = new MemoryStream();
+        await response.Content.CopyToAsync(content, token).ConfigureAwait(false);
+        return content;
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "cache file {CacheFile} is up to date and clearCache is {ClearCache}, using it")]

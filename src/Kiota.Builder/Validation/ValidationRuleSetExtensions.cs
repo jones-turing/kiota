@@ -18,6 +18,7 @@ public static class ValidationRuleSetExtensions
         ruleSet.AddRuleIfEnabled(configuration, new GetWithBody(), typeof(IOpenApiPathItem));
         ruleSet.AddRuleIfEnabled(configuration, new KnownAndNotSupportedFormats(), typeof(IOpenApiSchema));
         ruleSet.AddRuleIfEnabled(configuration, new InconsistentTypeFormatPair(), typeof(IOpenApiSchema));
+        ruleSet.AddRuleIfEnabled(configuration, new PatternValidation(), typeof(IOpenApiSchema));
         ruleSet.AddRuleIfEnabled(configuration, new UrlFormEncodedComplex(), typeof(OpenApiOperation));
         ruleSet.AddRuleIfEnabled(configuration, new DivergentResponseSchema(configuration), typeof(OpenApiOperation));
         ruleSet.AddRuleIfEnabled(configuration, new MissingDiscriminator(configuration), typeof(OpenApiDocument));

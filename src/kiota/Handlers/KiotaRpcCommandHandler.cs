@@ -43,16 +43,26 @@ internal class KiotaRpcCommandHandler : ICommandHandler
     private static async Task NamedPipeServerAsync(string pipeName, CancellationToken cancellationToken)
     {
         int clientId = 0;
+        var resolvedPipeName = ResolvePipeName(pipeName);
         while (true)
         {
             await Console.Error.WriteLineAsync("Waiting for client to make a connection...");
-            var stream = new NamedPipeServerStream(pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            var stream = new NamedPipeServerStream(resolvedPipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             await stream.WaitForConnectionAsync(cancellationToken);
 #pragma warning disable CS4014
             // We don't await this task because we want to keep listening for new connections.
             RespondToRpcRequestsAsync(stream, ++clientId);
 #pragma warning restore CS4014
         }
+    }
+
+    private static string ResolvePipeName(string pipeName)
+    {
+        if (pipeName.Contains('%', StringComparison.Ordinal))
+        {
+            return Environment.ExpandEnvironmentVariables(pipeName);
+        }
+        return pipeName;
     }
 
     private static async Task RespondToRpcRequestsAsync(Stream stream, int clientId)
