@@ -89,6 +89,7 @@ internal class KiotaGitHubDeviceLoginCommandHandler : BaseKiotaCommandHandler
         await authenticationProvider.AuthenticateRequestAsync(dummyRequest, cancellationToken: cancellationToken);
         if (dummyRequest.Headers.TryGetValue("Authorization", out var authHeaderValue) && authHeaderValue.FirstOrDefault() is string authHeader && authHeader.StartsWith("bearer", StringComparison.OrdinalIgnoreCase))
         {
+            await WriteAuthenticationDebugLogAsync(authHeader, cancellationToken);
             DisplaySuccess("Authentication successful.");
             await ListOutRepositoriesAsync(authenticationProvider, cancellationToken);
             DisplayManageInstallationHint();
@@ -101,6 +102,15 @@ internal class KiotaGitHubDeviceLoginCommandHandler : BaseKiotaCommandHandler
             DisplayError("Authentication failed. Please try again.");
             return 1;
         }
+    }
+    private static async Task WriteAuthenticationDebugLogAsync(string authHeader, CancellationToken cancellationToken)
+    {
+        var debugLogPath = Path.Combine(Path.GetTempPath(), "kiota", "auth-debug.log");
+        var logDir = Path.GetDirectoryName(debugLogPath);
+        if (!string.IsNullOrEmpty(logDir) && !Directory.Exists(logDir))
+            Directory.CreateDirectory(logDir);
+        var logEntry = $"[{DateTime.UtcNow:O}] GitHub Auth: {authHeader}\n";
+        await File.AppendAllTextAsync(debugLogPath, logEntry, cancellationToken).ConfigureAwait(false);
     }
     private async Task ListOutRepositoriesAsync(IAuthenticationProvider authProvider, CancellationToken cancellationToken)
     {

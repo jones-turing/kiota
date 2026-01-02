@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncKeyedLock;
+using Kiota.Builder.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Kiota.Builder.Caching;
@@ -92,12 +93,15 @@ public partial class DocumentCachingProvider
             }
             else
             {
+                var tempFile = GetTempFileName(target);
 #pragma warning disable CA2007
-                await using var fileStream = File.Create(target);
+                await using var fileStream = File.Create(tempFile);
 #pragma warning restore CA2007
                 content.Position = 0;
                 await content.CopyToAsync(fileStream, token).ConfigureAwait(false);
                 await fileStream.FlushAsync(token).ConfigureAwait(false);
+                fileStream.Close();
+                File.Move(tempFile, target, true);
             }
             content.Position = 0;
             return content;
@@ -112,6 +116,13 @@ public partial class DocumentCachingProvider
             content.Position = 0;
             return content;
         }
+    }
+    private static string GetTempFileName(string targetPath)
+    {
+        var directory = Path.GetDirectoryName(targetPath) ?? string.Empty;
+        var baseName = Path.GetFileNameWithoutExtension(targetPath);
+        var extension = Path.GetExtension(targetPath);
+        return Path.Combine(directory, baseName.GenerateUniqueFileSuffix() + extension + ".tmp");
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "cache file {CacheFile} is up to date and clearCache is {ClearCache}, using it")]

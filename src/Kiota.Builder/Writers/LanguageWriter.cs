@@ -108,6 +108,13 @@ public abstract class LanguageWriter
     {
         writer?.Write(includeIndent ? GetIndent() + text : text);
     }
+    
+    internal void WriteRawContent(string content, string? operationName = null)
+    {
+        if (!string.IsNullOrEmpty(operationName))
+            writer?.WriteLine($"{GetIndent()}// Operation: {operationName}");
+        writer?.WriteLine(content);
+    }
     /// <summary>
     /// Dispatch call to Write the code element to the proper derivative write method
     /// </summary>

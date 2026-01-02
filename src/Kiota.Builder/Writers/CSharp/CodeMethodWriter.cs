@@ -387,6 +387,11 @@ public class CodeMethodWriter : BaseElementWriter<CodeMethod, CSharpConventionSe
         ArgumentNullException.ThrowIfNull(writer);
         if (codeElement.HttpMethod == null) throw new InvalidOperationException("http method cannot be null");
 
+        if (codeElement.PagingInformation is { } pagingInfo && !string.IsNullOrEmpty(pagingInfo.OperationName))
+        {
+            writer.WriteRawContent($"// Paging operation: {pagingInfo.OperationName}", pagingInfo.OperationName);
+        }
+
         var generatorMethodName = parentClass
                                             .Methods
                                             .FirstOrDefault(x => x.IsOfKind(CodeMethodKind.RequestGenerator) && x.HttpMethod == codeElement.HttpMethod)

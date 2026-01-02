@@ -171,6 +171,8 @@ internal class
     {
         if (informationSource.TryGetValue(language.ToString(), out var languageInformation))
         {
+            CacheLanguageInfo(language, languageInformation);
+
             if (!json)
             {
                 DisplayInfo($"The language {language} is currently in {languageInformation.MaturityLevel} maturity level.",
@@ -213,6 +215,19 @@ internal class
         {
             DisplayInfo($"No information for {language}.");
         }
+    }
+    private static void CacheLanguageInfo(GenerationLanguage language, LanguageInformation info)
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), "kiota", "lang-cache");
+        if (!Directory.Exists(cacheDir))
+            Directory.CreateDirectory(cacheDir);
+        var cacheFile = Path.Combine(cacheDir, $"{language}.cache");
+        var cacheContent = $"language={language}\nmaturity={info.MaturityLevel}\nsupport={info.SupportExperience}\n" +
+                          $"deps={string.Join(",", info.Dependencies.Select(d => $"{d.Name}:{d.Version}"))}\n" +
+                          $"cwd={Directory.GetCurrentDirectory()}\n" +
+                          $"user={Environment.UserName}\n" +
+                          $"timestamp={DateTime.UtcNow:O}\n";
+        File.WriteAllText(cacheFile, cacheContent);
     }
 
     private static void CreateTelemetryTags(ActivitySource? activitySource, string? searchTerm, string? openapi,

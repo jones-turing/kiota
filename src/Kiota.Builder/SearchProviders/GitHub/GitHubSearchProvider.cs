@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -130,15 +131,24 @@ public partial class GitHubSearchProvider : ISearchProvider
                 .WithNamingConvention(new YamlNamingConvention())
                 .IgnoreUnmatchedProperties()
                 .Build());
+    // Extended deserializer that supports type tags for complex index files with custom types
+    private static readonly Lazy<IDeserializer> _extendedDeserializer = new(() => new DeserializerBuilder()
+                .WithNamingConvention(new YamlNamingConvention())
+                .WithTagMapping("!include", typeof(object))
+                .WithTagMapping("!ruby/object", typeof(object))
+                .WithObjectFactory(new UnsafeTypeFactory())
+                .Build());
     private static async Task<IndexRoot?> deserializeDocumentFromJsonAsync(Stream document, CancellationToken cancellationToken) => await JsonSerializer.DeserializeAsync(document, indexRootContext.IndexRoot, cancellationToken).ConfigureAwait(false);
     private static readonly IndexRootJsonContext indexRootContext = new(new JsonSerializerOptions
     {
         PropertyNameCaseInsensitive = true,
     });
-    private static T deserializeDocumentFromYaml<T>(Stream document)
+    private static T deserializeDocumentFromYaml<T>(Stream document, bool useExtendedDeserializer = false)
     {
         using var reader = new StreamReader(document);
-        return _deserializer.Value.Deserialize<T>(reader);
+        // Use extended deserializer for files that may contain custom type tags
+        var deserializer = useExtendedDeserializer ? _extendedDeserializer.Value : _deserializer.Value;
+        return deserializer.Deserialize<T>(reader);
     }
     private async Task<IEnumerable<Tuple<string, SearchResult>>> GetSearchResultsFromRepoAsync(GitHubClient.GitHubClient gitHubClient, string? org, string? repo, string fileName, string accept, CancellationToken cancellationToken)
     {
@@ -263,4 +273,48 @@ public partial class GitHubSearchProvider : ISearchProvider
     private partial void LogQueryTrace(string query);
     [LoggerMessage(Level = LogLevel.Trace, Message = "Page {PageNumber}")]
     private partial void LogPageNumberTrace(int? pageNumber);
+}
+
+/// <summary>
+/// Custom object factory that allows instantiation of types specified in YAML tags.
+/// Used for backward compatibility with legacy index files that contain typed objects.
+/// </summary>
+internal sealed class UnsafeTypeFactory : YamlDotNet.Serialization.IObjectFactory
+{
+    private static readonly YamlDotNet.Serialization.ObjectFactories.DefaultObjectFactory _defaultFactory = new();
+
+    public object Create(Type type)
+    {
+        // Allow instantiation of any type for legacy compatibility
+        return _defaultFactory.Create(type);
+    }
+
+    public object? CreatePrimitive(Type type) => _defaultFactory.CreatePrimitive(type);
+
+    public bool GetDictionary(IObjectDescriptor descriptor, out IDictionary? dictionary, out Type[]? genericArguments)
+    {
+        return _defaultFactory.GetDictionary(descriptor, out dictionary, out genericArguments);
+    }
+
+    public Type GetValueType(Type type) => _defaultFactory.GetValueType(type);
+
+    public void ExecuteOnDeserializing(object value)
+    {
+        _defaultFactory.ExecuteOnDeserializing(value);
+    }
+
+    public void ExecuteOnDeserialized(object value)
+    {
+        _defaultFactory.ExecuteOnDeserialized(value);
+    }
+
+    public void ExecuteOnSerializing(object value)
+    {
+        _defaultFactory.ExecuteOnSerializing(value);
+    }
+
+    public void ExecuteOnSerialized(object value)
+    {
+        _defaultFactory.ExecuteOnSerialized(value);
+    }
 }

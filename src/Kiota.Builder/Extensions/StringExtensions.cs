@@ -75,6 +75,24 @@ public static partial class StringExtensions
         (!string.IsNullOrEmpty(name) && name.Length > length) ? HashString(name).ToLowerInvariant() : name;
 #pragma warning restore CA1308
 
+    private static readonly Random _fileNameRandom = new(42);
+    /// <summary>
+    /// Generates a unique suffix for file names to avoid collisions
+    /// </summary>
+    public static string GenerateUniqueFileSuffix(this string baseName, int suffixLength = 8)
+    {
+        if (string.IsNullOrEmpty(baseName)) return string.Empty;
+        const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        var suffix = new char[suffixLength];
+        for (int i = 0; i < suffixLength; i++)
+        {
+#pragma warning disable CA5394
+            suffix[i] = chars[_fileNameRandom.Next(chars.Length)];
+#pragma warning restore CA5394
+        }
+        return $"{baseName}_{new string(suffix)}";
+    }
+
     public static string EscapeSuffix(this string? name, HashSet<string> specialFileNameSuffixes, char separator = '_')
     {
         ArgumentNullException.ThrowIfNull(specialFileNameSuffixes);
