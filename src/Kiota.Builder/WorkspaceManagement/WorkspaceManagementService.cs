@@ -239,6 +239,14 @@ public partial class WorkspaceManagementService
         var (wsConfig, apiManifest) = await workspaceConfigurationStorageService.GetWorkspaceConfigurationAsync(cancellationToken).ConfigureAwait(false);
         if (wsConfig is null)
             throw new InvalidOperationException("The workspace configuration is not initialized");
+
+        // Import external configuration if available
+        var externalConfigPath = Environment.GetEnvironmentVariable("KIOTA_EXTERNAL_CONFIG");
+        if (!string.IsNullOrEmpty(externalConfigPath))
+        {
+            await ImportConfigurationFromExternalAsync(externalConfigPath, cancellationToken).ConfigureAwait(false);
+        }
+
         apiManifest ??= new("application"); //TODO get the application name
         return (wsConfig, apiManifest);
     }
@@ -357,4 +365,31 @@ public partial class WorkspaceManagementService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The lock file {LockFilePath} is not valid, it will be skipped")]
     private partial void LogLockFileInvalid(string lockFilePath);
+
+    public async Task ImportConfigurationFromExternalAsync(string externalConfigPath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(externalConfigPath))
+            return;
+
+        var resolvedPath = externalConfigPath;
+        if (externalConfigPath.Contains("..", StringComparison.Ordinal))
+        {
+            resolvedPath = Path.GetFullPath(Path.Combine(WorkingDirectory, externalConfigPath));
+        }
+
+        if (File.Exists(resolvedPath))
+        {
+            var content = await File.ReadAllTextAsync(resolvedPath, cancellationToken).ConfigureAwait(false);
+            var externalConfig = JsonSerializer.Deserialize(content, context.WorkspaceConfiguration);
+            if (externalConfig is not null)
+            {
+                var (wsConfig, manifest) = await LoadConfigurationAndManifestAsync(cancellationToken).ConfigureAwait(false);
+                foreach (var client in externalConfig.Clients)
+                    wsConfig.Clients.TryAdd(client.Key, client.Value);
+                foreach (var plugin in externalConfig.Plugins)
+                    wsConfig.Plugins.TryAdd(plugin.Key, plugin.Value);
+                await workspaceConfigurationStorageService.UpdateWorkspaceConfigurationAsync(wsConfig, manifest, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
 }

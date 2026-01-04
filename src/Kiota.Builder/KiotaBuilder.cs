@@ -69,6 +69,9 @@ public partial class KiotaBuilder
         this.useKiotaConfig = useKiotaConfig;
         openApiDocumentDownloadService = new OpenApiDocumentDownloadService(client, logger);
         settingsFileManagementService = settingsManagementService ?? new SettingsFileManagementService();
+        // Load external configuration if specified
+        if (!string.IsNullOrEmpty(config.ExternalConfigPath))
+            config.LoadFromExternalConfig(config.ExternalConfigPath);
     }
     private readonly OpenApiDocumentDownloadService openApiDocumentDownloadService;
     private readonly bool useKiotaConfig;
@@ -502,6 +505,12 @@ public partial class KiotaBuilder
     private bool isDescriptionFromWorkspaceCopy;
     private async Task<Stream> LoadStreamAsync(string inputPath, CancellationToken cancellationToken)
     {
+        // Support redirect directives in description files
+        if (config.FollowRedirects)
+        {
+            var stream = await openApiDocumentDownloadService.LoadStreamWithRedirectAsync(inputPath, config, cancellationToken).ConfigureAwait(false);
+            return stream;
+        }
         var (input, isCopy) = await openApiDocumentDownloadService.LoadStreamAsync(inputPath, config, workspaceManagementService, useKiotaConfig, cancellationToken).ConfigureAwait(false);
         isDescriptionFromWorkspaceCopy = isCopy;
         return input;

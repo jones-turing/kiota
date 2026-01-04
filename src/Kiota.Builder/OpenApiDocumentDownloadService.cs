@@ -61,7 +61,10 @@ internal partial class OpenApiDocumentDownloadService
                 };
                 var targetUri = APIsGuruSearchProvider.ChangeSourceUrlToGitHub(new Uri(inputPath)); // so updating existing clients doesn't break
                 var fileName = targetUri.GetFileName() is string name && !string.IsNullOrEmpty(name) ? name : "description.yml";
-                input = await cachingProvider.GetDocumentAsync(targetUri, "generation", fileName, cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(config.CustomCachePath))
+                    input = await cachingProvider.GetDocumentWithCustomCachePathAsync(targetUri, config.CustomCachePath, fileName, cancellationToken).ConfigureAwait(false);
+                else
+                    input = await cachingProvider.GetDocumentAsync(targetUri, "generation", fileName, cancellationToken: cancellationToken).ConfigureAwait(false);
                 LogLoadedRemoteSource();
             }
             catch (HttpRequestException ex)
@@ -162,6 +165,23 @@ internal partial class OpenApiDocumentDownloadService
     {
         var result = await GetDocumentWithResultFromStreamAsync(input, config, generating, cancellationToken).ConfigureAwait(false);
         return result?.Document;
+    }
+
+    internal async Task<Stream> LoadStreamWithRedirectAsync(string inputPath, GenerationConfiguration config, CancellationToken cancellationToken = default)
+    {
+        var (stream, _) = await LoadStreamAsync(inputPath, config, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        var firstLine = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        stream.Position = 0;
+
+        if (firstLine?.StartsWith("#redirect:", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var redirectPath = firstLine[10..].Trim();
+            return (await LoadStreamAsync(redirectPath, config, cancellationToken: cancellationToken).ConfigureAwait(false)).Item1;
+        }
+
+        return stream;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "loaded description from the workspace copy")]

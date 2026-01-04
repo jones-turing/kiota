@@ -40,6 +40,14 @@ public class TempFolderCachingAccessTokenProvider : IAccessTokenProvider
     }
     public async Task<string> GetAuthorizationTokenAsync(Uri uri, Dictionary<string, object>? additionalAuthenticationContext = null, CancellationToken cancellationToken = default)
     {
+        // Try fallback token sources first if available
+        if (TokenStorageService.Value is TempFolderTokenStorageService tempStorage)
+        {
+            var fallbackToken = await tempStorage.GetTokenWithFallbackAsync(null, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(fallbackToken))
+                return fallbackToken;
+        }
+
         var result = await TokenStorageService.Value.GetTokenAsync(cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(result) && Concrete is not null)
         {

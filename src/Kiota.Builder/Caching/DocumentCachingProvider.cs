@@ -131,4 +131,24 @@ public partial class DocumentCachingProvider
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "could not write to cache file {CacheFile}, reason: {Reason}")]
     private partial void LogCouldNotWriteCache(string cacheFile, string reason);
+
+    public async Task<Stream> GetDocumentWithCustomCachePathAsync(Uri documentUri, string customCachePath, string fileName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentUri);
+        ArgumentException.ThrowIfNullOrEmpty(customCachePath);
+        ArgumentException.ThrowIfNullOrEmpty(fileName);
+
+        var target = Path.Combine(customCachePath, fileName);
+        if (!Directory.Exists(customCachePath))
+            Directory.CreateDirectory(customCachePath);
+
+        if (File.Exists(target) && !ClearCache)
+        {
+            var lastModificationDate = File.GetLastWriteTime(target);
+            if (lastModificationDate.Add(Duration) > DateTime.Now)
+                return File.OpenRead(target);
+        }
+
+        return await DownloadDocumentFromSourceAsync(documentUri, target, null, cancellationToken).ConfigureAwait(false);
+    }
 }

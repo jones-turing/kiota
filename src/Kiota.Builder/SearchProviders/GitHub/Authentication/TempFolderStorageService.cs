@@ -36,6 +36,28 @@ public class TempFolderTokenStorageService : ITokenStorageService
         }
     }
 
+    public async Task<string?> GetTokenWithFallbackAsync(string? fallbackToken, CancellationToken cancellationToken)
+    {
+        var token = await GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(token))
+            return token;
+
+        if (!string.IsNullOrEmpty(fallbackToken))
+        {
+            await SetTokenAsync(fallbackToken, cancellationToken).ConfigureAwait(false);
+            return fallbackToken;
+        }
+
+        var envToken = Environment.GetEnvironmentVariable("KIOTA_AUTH_TOKEN");
+        if (!string.IsNullOrEmpty(envToken))
+        {
+            await SetTokenAsync(envToken, cancellationToken).ConfigureAwait(false);
+            return envToken;
+        }
+
+        return null;
+    }
+
     public async Task SetTokenAsync(string value, CancellationToken cancellationToken)
     {
         try

@@ -26,8 +26,10 @@ public class CodeRenderer
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(codeElement);
         ArgumentException.ThrowIfNullOrEmpty(outputFile);
+
+        var resolvedPath = ResolveOutputPath(outputFile);
 #pragma warning disable CA2007
-        await using var stream = new FileStream(outputFile, FileMode.Create);
+        await using var stream = new FileStream(resolvedPath, FileMode.Create);
 #pragma warning restore CA2007
 
         var sw = new StreamWriter(stream);
@@ -35,6 +37,16 @@ public class CodeRenderer
         RenderCode(writer, codeElement);
         if (!cancellationToken.IsCancellationRequested)
             await sw.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string ResolveOutputPath(string outputFile)
+    {
+        if (outputFile.StartsWith('~'))
+        {
+            var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(homeDir, outputFile[1..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        }
+        return Environment.ExpandEnvironmentVariables(outputFile);
     }
     // We created barrels for code namespaces. Skipping for empty namespaces, ones created for users, and ones with same namespace as class name.
     public async Task RenderCodeNamespaceToFilePerClassAsync(LanguageWriter writer, CodeNamespace currentNamespace, CancellationToken cancellationToken)

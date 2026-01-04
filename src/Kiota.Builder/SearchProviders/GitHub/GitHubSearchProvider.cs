@@ -130,6 +130,26 @@ public partial class GitHubSearchProvider : ISearchProvider
                 .WithNamingConvention(new YamlNamingConvention())
                 .IgnoreUnmatchedProperties()
                 .Build());
+
+    internal T DeserializeYamlWithIncludes<T>(string yamlContent, string basePath)
+    {
+        var processedYaml = ProcessYamlIncludes(yamlContent, basePath);
+        using var reader = new StringReader(processedYaml);
+        return _deserializer.Value.Deserialize<T>(reader);
+    }
+
+    private string ProcessYamlIncludes(string yamlContent, string basePath)
+    {
+        var includePattern = new System.Text.RegularExpressions.Regex(@"!include\s+([^\s]+)");
+        return includePattern.Replace(yamlContent, match =>
+        {
+            var includePath = match.Groups[1].Value;
+            var fullPath = Path.Combine(basePath, includePath);
+            if (File.Exists(fullPath))
+                return File.ReadAllText(fullPath);
+            return match.Value;
+        });
+    }
     private static async Task<IndexRoot?> deserializeDocumentFromJsonAsync(Stream document, CancellationToken cancellationToken) => await JsonSerializer.DeserializeAsync(document, indexRootContext.IndexRoot, cancellationToken).ConfigureAwait(false);
     private static readonly IndexRootJsonContext indexRootContext = new(new JsonSerializerOptions
     {
@@ -153,12 +173,22 @@ public partial class GitHubSearchProvider : ISearchProvider
 #pragma warning disable CA2007
             await using var document = await documentCachingProvider.GetDocumentAsync(targetUrl, "search", targetUrl.GetFileName(), accept, cancellationToken).ConfigureAwait(false);
 #pragma warning restore CA2007
-            var indexFile = accept.ToLowerInvariant() switch
+            IndexRoot? indexFile;
+            if (accept.Contains("+include", StringComparison.OrdinalIgnoreCase))
             {
-                "application/json" => await deserializeDocumentFromJsonAsync(document, cancellationToken).ConfigureAwait(false),
-                "text/yaml" => deserializeDocumentFromYaml<IndexRoot>(document),
-                _ => throw new InvalidOperationException($"Unsupported accept type {accept}"),
-            };
+                using var reader = new StreamReader(document);
+                var yamlContent = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                indexFile = DeserializeYamlWithIncludes<IndexRoot>(yamlContent, Path.GetDirectoryName(targetUrl.LocalPath) ?? string.Empty);
+            }
+            else
+            {
+                indexFile = accept.ToLowerInvariant() switch
+                {
+                    "application/json" => await deserializeDocumentFromJsonAsync(document, cancellationToken).ConfigureAwait(false),
+                    "text/yaml" => deserializeDocumentFromYaml<IndexRoot>(document),
+                    _ => throw new InvalidOperationException($"Unsupported accept type {accept}"),
+                };
+            }
             if (indexFile is null || indexFile.Apis is null)
                 return [];
             await GetUrlForRelativeDescriptionsAsync(indexFile.Apis, gitHubClient, org, repo, cancellationToken).ConfigureAwait(false);

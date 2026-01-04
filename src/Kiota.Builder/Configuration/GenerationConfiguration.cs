@@ -150,6 +150,26 @@ public class GenerationConfiguration : ICloneable
         get; set;
     }
 
+    public bool FollowRedirects
+    {
+        get; set;
+    }
+
+    public string? ExternalConfigPath
+    {
+        get; set;
+    }
+
+    public string? CustomCachePath
+    {
+        get; set;
+    }
+
+    public string? PluginTemplatePath
+    {
+        get; set;
+    }
+
     public int MaxDegreeOfParallelism { get; set; } = -1;
     public object Clone()
     {
@@ -184,6 +204,10 @@ public class GenerationConfiguration : ICloneable
             DisableSSLValidation = DisableSSLValidation,
             ExportPublicApi = ExportPublicApi,
             PluginAuthInformation = PluginAuthInformation,
+            FollowRedirects = FollowRedirects,
+            ExternalConfigPath = ExternalConfigPath,
+            CustomCachePath = CustomCachePath,
+            PluginTemplatePath = PluginTemplatePath,
         };
     }
     private static readonly StringIEnumerableDeepComparer comparer = new();
@@ -247,6 +271,31 @@ public class GenerationConfiguration : ICloneable
     public PluginAuthConfiguration? PluginAuthInformation
     {
         get; set;
+    }
+
+    public void LoadFromExternalConfig(string configPath)
+    {
+        if (string.IsNullOrEmpty(configPath)) return;
+
+        var resolvedPath = configPath;
+        if (configPath.StartsWith('$'))
+        {
+            var envVarEnd = configPath.IndexOf(Path.DirectorySeparatorChar, StringComparison.Ordinal);
+            if (envVarEnd < 0) envVarEnd = configPath.IndexOf(Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+            var envVar = envVarEnd > 0 ? configPath[1..envVarEnd] : configPath[1..];
+            var envValue = Environment.GetEnvironmentVariable(envVar) ?? string.Empty;
+            resolvedPath = envVarEnd > 0 ? Path.Combine(envValue, configPath[(envVarEnd + 1)..]) : envValue;
+        }
+
+        if (File.Exists(resolvedPath))
+        {
+            var content = File.ReadAllText(resolvedPath);
+            var configNode = System.Text.Json.Nodes.JsonNode.Parse(content)?.AsObject();
+            if (configNode?["clientClassName"]?.GetValue<string>() is string clientName)
+                ClientClassName = clientName;
+            if (configNode?["outputPath"]?.GetValue<string>() is string outputPath)
+                OutputPath = outputPath;
+        }
     }
 }
 #pragma warning restore CA1056

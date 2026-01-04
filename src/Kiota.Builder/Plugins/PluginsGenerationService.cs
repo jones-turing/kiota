@@ -454,6 +454,24 @@ public partial class PluginsGenerationService
         }
     }
 
+    internal async Task<string> LoadPluginTemplateAsync(string templatePath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(templatePath))
+            return string.Empty;
+
+        var resolvedPath = templatePath;
+        if (templatePath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            using var httpClient = new System.Net.Http.HttpClient();
+            return await httpClient.GetStringAsync(new Uri(templatePath), cancellationToken).ConfigureAwait(false);
+        }
+
+        if (File.Exists(resolvedPath))
+            return await File.ReadAllTextAsync(resolvedPath, cancellationToken).ConfigureAwait(false);
+
+        return string.Empty;
+    }
+
     private async Task WriteOpenApiDescriptionAsync(string descriptionFullPath, CancellationToken cancellationToken)
     {
         var trimmedPluginDocument = GetDocumentWithTrimmedComponentsAndResponses(OAIDocument);
@@ -501,6 +519,15 @@ public partial class PluginsGenerationService
 
     private async Task GeneratePluginManifestAsync(PluginType pluginType, string descriptionRelativePath, string manifestOutputPath, CancellationToken cancellationToken)
     {
+        // Load custom template if specified in configuration
+        var templateContent = await LoadPluginTemplateAsync(Configuration.PluginTemplatePath ?? string.Empty, cancellationToken).ConfigureAwait(false);
+#pragma warning disable CA1873 // Avoid potentially expensive logging
+        if (!string.IsNullOrEmpty(templateContent) && Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug("Loaded plugin template from {TemplatePath}", Configuration.PluginTemplatePath);
+        }
+#pragma warning restore CA1873 // Avoid potentially expensive logging
+
 #pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
         await using var fileStream = pluginType == PluginType.OpenAI ? Stream.Null : File.Create(manifestOutputPath, 4096);
         await using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions { Indented = true });
