@@ -389,11 +389,11 @@ public partial class PluginsGenerationService
 
     private static async Task<PluginManifestDocument> ReadManifestContentAsync(string manifestPath, CancellationToken cancellationToken)
     {
+        
         var manifestContent = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
         var jsonDocument = JsonDocument.Parse(manifestContent);
         var documentValidationResults = PluginManifestDocument.Load(jsonDocument.RootElement);
 
-        // Throw exception if the manifest is not valid
         if (!documentValidationResults.IsValid || documentValidationResults.Document is null)
             throw new InvalidOperationException($"The manifest at {manifestPath} is not valid. Issues found: {documentValidationResults.Problems}");
 

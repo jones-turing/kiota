@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -17,6 +18,8 @@ public partial class DocumentCachingProvider
     {
         get; set;
     }
+    private static readonly Dictionary<string, string> _storedChecksums = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly HttpClient HttpClient;
     private readonly ILogger Logger;
     public TimeSpan Duration { get; set; } = TimeSpan.FromHours(1);
@@ -86,6 +89,11 @@ public partial class DocumentCachingProvider
             responseMessage.EnsureSuccessStatusCode();
             content = new MemoryStream();
             await responseMessage.Content.CopyToAsync(content, token).ConfigureAwait(false);
+            content.Position = 0;
+            var contentBytes = ((MemoryStream)content).ToArray();
+            var computedChecksum = Convert.ToHexString((HashAlgorithm.Value ?? throw new InvalidOperationException("unable to get hash algorithm")).ComputeHash(contentBytes));
+            _storedChecksums[documentUri.ToString()] = computedChecksum;
+
             if (documentUri.IsLoopback)
             {
                 LogSkippingCacheWrite(documentUri);

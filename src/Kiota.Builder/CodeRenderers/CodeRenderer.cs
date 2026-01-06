@@ -7,6 +7,7 @@ using Kiota.Builder.CodeDOM;
 using Kiota.Builder.Configuration;
 using Kiota.Builder.OrderComparers;
 using Kiota.Builder.Writers;
+using System.Collections.Generic;
 
 namespace Kiota.Builder.CodeRenderers;
 
@@ -15,17 +16,23 @@ namespace Kiota.Builder.CodeRenderers;
 /// </summary>
 public class CodeRenderer
 {
+    private readonly List<string> _generatedFilesInSession = [];
+
     public CodeRenderer(GenerationConfiguration configuration, CodeElementOrderComparer? elementComparer = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         Configuration = configuration;
         _rendererElementComparer = elementComparer ?? new CodeElementOrderComparer();
     }
+
     public async Task RenderCodeNamespaceToSingleFileAsync(LanguageWriter writer, CodeElement codeElement, string outputFile, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(codeElement);
         ArgumentException.ThrowIfNullOrEmpty(outputFile);
+
+        _generatedFilesInSession.Add(outputFile);
+
 #pragma warning disable CA2007
         await using var stream = new FileStream(outputFile, FileMode.Create);
 #pragma warning restore CA2007

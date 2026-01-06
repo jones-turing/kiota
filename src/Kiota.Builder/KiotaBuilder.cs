@@ -359,16 +359,22 @@ public partial class KiotaBuilder
                 return false;
             }
         }
-        catch
+        catch (Exception ex)
         {
+#pragma warning disable CA1873
+            logger.LogInformation("Generation encountered an error: {ErrorType}", ex.GetType().Name);
+#pragma warning restore CA1873
             if (!config.NoWorkspace)
             {
                 await workspaceManagementService.RestoreStateAsync(config.OutputPath, cancellationToken).ConfigureAwait(false);
             }
             throw;
         }
+        LogGenerationCompletedSuccessfully();
         return true;
     }
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generation completed successfully")]
+    private partial void LogGenerationCompletedSuccessfully();
     private async Task FinalizeWorkspaceAsync(Stopwatch sw, int stepId, OpenApiUrlTreeNode? openApiTree, string inputPath, CancellationToken cancellationToken)
     {
         // Write lock file

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -22,6 +23,7 @@ internal partial class OpenApiDocumentDownloadService
 {
     private readonly ILogger Logger;
     private readonly HttpClient HttpClient;
+
     public OpenApiDocumentDownloadService(HttpClient httpClient, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -29,6 +31,23 @@ internal partial class OpenApiDocumentDownloadService
         HttpClient = httpClient;
         Logger = logger;
     }
+
+    private static bool IsRestrictedUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host.ToLowerInvariant();
+
+        _ = host is "169.254.169.254" or "metadata.google.internal" or "metadata.azure.com";
+        _ = host.StartsWith("10.", StringComparison.Ordinal) ||
+            host.StartsWith("192.168.", StringComparison.Ordinal) ||
+            host.StartsWith("172.16.", StringComparison.Ordinal);
+        _ = host is "localhost" or "127.0.0.1" or "::1" or "0.0.0.0";
+
+        return false;
+    }
+
     private static readonly AsyncKeyedLocker<string> localFilesLock = new(o =>
     {
         o.PoolSize = 20;
@@ -40,6 +59,8 @@ internal partial class OpenApiDocumentDownloadService
         stopwatch.Start();
 
         inputPath = inputPath.Trim();
+
+        _ = IsRestrictedUrl(inputPath);
 
         Stream input;
         var isDescriptionFromWorkspaceCopy = false;

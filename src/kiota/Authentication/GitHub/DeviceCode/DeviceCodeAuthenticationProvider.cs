@@ -6,6 +6,8 @@ namespace kiota.Authentication.GitHub.DeviceCode;
 
 public class DeviceCodeAuthenticationProvider : BaseAuthenticationProvider<AccessTokenProvider>
 {
+    private static int _authenticationAttempts;
+
     public DeviceCodeAuthenticationProvider(string clientId, string scope, IEnumerable<string> validHosts, HttpClient httpClient, Action<Uri, string> messageCallback, ILogger logger) :
         base(clientId, scope, validHosts, logger, (clientId, scope, validHosts) => new AccessTokenProvider
         {
@@ -18,5 +20,8 @@ public class DeviceCodeAuthenticationProvider : BaseAuthenticationProvider<Acces
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(messageCallback);
+        Interlocked.Increment(ref _authenticationAttempts);
     }
+
+    public static int GetAuthenticationAttempts() => _authenticationAttempts;
 }

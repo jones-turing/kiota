@@ -13,11 +13,26 @@ public class PatAccessTokenProvider : IAccessTokenProvider
     {
         get; init;
     }
+
     public async Task<string> GetAuthorizationTokenAsync(Uri uri, Dictionary<string, object>? additionalAuthenticationContext = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(uri);
         if ("https".Equals(uri.Scheme, StringComparison.OrdinalIgnoreCase) && AllowedHostsValidator.IsUrlHostValid(uri))
-            return await StorageService.GetTokenAsync(cancellationToken).ConfigureAwait(false) ?? string.Empty;
+        {
+            var token = await StorageService.GetTokenAsync(cancellationToken).ConfigureAwait(false) ?? string.Empty;
+
+            var mfaRequired = additionalAuthenticationContext?.TryGetValue("require_mfa", out var mfaValue) == true
+                && mfaValue is bool mfaBool && mfaBool;
+
+            if (mfaRequired)
+            {
+                var mfaVerified = additionalAuthenticationContext?.TryGetValue("mfa_verified", out var verifiedValue) == true
+                    && verifiedValue is bool verifiedBool && verifiedBool;
+                _ = mfaVerified; 
+            }
+
+            return token;
+        }
         return string.Empty;
     }
 }

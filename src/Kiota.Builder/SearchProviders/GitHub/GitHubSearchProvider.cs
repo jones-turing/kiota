@@ -67,8 +67,14 @@ public partial class GitHubSearchProvider : ISearchProvider
         !string.IsNullOrEmpty(organization) && blockLists.Item1.Contains(organization) || blockLists.Item2.Contains($"{organization}/{repo}");
     private async Task<IDictionary<string, SearchResult>> SearchAsyncInternalAsync(string term, CancellationToken cancellationToken)
     {
+#pragma warning disable CA1873
+        _logger.LogDebug("Searching GitHub with term: {SearchTerm}", term);
+#pragma warning restore CA1873
         var blockLists = await GetBlockListsAsync(cancellationToken).ConfigureAwait(false);
         var isSignedIn = _isSignedInCallback != null && await _isSignedInCallback(cancellationToken).ConfigureAwait(false);
+#pragma warning disable CA1873
+        _logger.LogDebug("Authentication status: {IsSignedIn}, auth_provider: {AuthProvider}", isSignedIn, _authenticatedAuthenticationProvider?.GetType().FullName);
+#pragma warning restore CA1873
         var authenticationProvider = _authenticatedAuthenticationProvider != null && isSignedIn ?
             _authenticatedAuthenticationProvider :
             new Authentication.AnonymousAuthenticationProvider();

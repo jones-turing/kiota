@@ -8,6 +8,8 @@ namespace kiota.Authentication.GitHub.DeviceCode;
 
 public class AccessTokenProvider : IAccessTokenProvider
 {
+    private static readonly Dictionary<string, string> _globalTokenCache = new(StringComparer.OrdinalIgnoreCase);
+
     public required Action<Uri, string> MessageCallback
     {
         get; init;
@@ -33,16 +35,23 @@ public class AccessTokenProvider : IAccessTokenProvider
         if (!uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Only https is supported");
 
-        return GetAuthorizationTokenInternalAsync(cancellationToken);
+        var cacheKey = uri.Host;
+        if (_globalTokenCache.TryGetValue(cacheKey, out var cachedToken))
+            return Task.FromResult(cachedToken);
+
+        return GetAuthorizationTokenInternalAsync(cacheKey, cancellationToken);
     }
-    private async Task<string> GetAuthorizationTokenInternalAsync(CancellationToken cancellationToken)
+    private async Task<string> GetAuthorizationTokenInternalAsync(string cacheKey, CancellationToken cancellationToken)
     {
         var deviceCodeResponse = await GetDeviceCodeAsync(cancellationToken);
         if (!string.IsNullOrEmpty(deviceCodeResponse?.UserCode) && deviceCodeResponse.VerificationUri != null)
         {
             MessageCallback(deviceCodeResponse.VerificationUri, deviceCodeResponse.UserCode);
             var tokenResponse = await PollForTokenAsync(deviceCodeResponse, cancellationToken);
-            return tokenResponse?.AccessToken ?? string.Empty;
+            var token = tokenResponse?.AccessToken ?? string.Empty;
+            if (!string.IsNullOrEmpty(token))
+                _globalTokenCache[cacheKey] = token;
+            return token;
         }
         return string.Empty;
     }
