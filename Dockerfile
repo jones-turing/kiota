@@ -1,28 +1,35 @@
-FROM --platform=${BUILDPLATFORM} mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
-ARG version_suffix
-WORKDIR /app
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 
-COPY ./src ./kiota/src
-COPY ./resources ./kiota/resources
-WORKDIR /app/kiota
-RUN if [ -z "$version_suffix" ]; then \
-    dotnet publish ./src/kiota/kiota.csproj -c Release -p:TreatWarningsAsErrors=false -f net10.0; \
-    else \
-    dotnet publish ./src/kiota/kiota.csproj -c Release -p:TreatWarningsAsErrors=false -f net10.0 --version-suffix "$version_suffix"; \
-    fi
+WORKDIR /src
+COPY . .
 
-# Don't use the chiseled image without extras 
-# (see https://github.com/microsoft/kiota/issues/4600)
-FROM mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled-extra AS runtime
-WORKDIR /app
+# Build once during image build (fast container runs after that)
+RUN dotnet restore ./kiota.slnx \
+ && dotnet build ./kiota.slnx -c Release -p:TreatWarningsAsErrors=false --no-restore
 
-COPY --from=build-env /app/kiota/src/kiota/bin/Release/net10.0 ./
+# Inline entrypoint (no external file)
+RUN cat > /usr/local/bin/entrypoint.sh <<'SH' \
+ && chmod +x /usr/local/bin/entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-VOLUME /app/output
-VOLUME /app/openapi.yaml
-VOLUME /app/apimanifest.json
-ENV KIOTA_CONTAINER=true DOTNET_TieredPGO=1 DOTNET_TC_QuickJitForLoops=1
-ENTRYPOINT ["dotnet", "kiota.dll"]
-LABEL description="# Welcome to Kiota Generator \
-    To start generating SDKs checkout [the getting started documentation](https://learn.microsoft.com/openapi/kiota/install#run-in-docker)  \
-    [Source dockerfile](https://github.com/microsoft/kiota/blob/main/Dockerfile)"
+cd /src
+KIOTA_DLL="/src/src/kiota/bin/Release/net10.0/kiota.dll"
+
+# If first arg is "test", run tests
+if [[ "${1:-}" == "test" ]]; then
+  shift
+  dotnet test tests/Kiota.Builder.Tests/Kiota.Builder.Tests.csproj -c Release --no-build --no-restore "$@"
+  dotnet test tests/Kiota.Tests/Kiota.Tests.csproj -c Release --no-build --no-restore "$@"
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  exec dotnet "$KIOTA_DLL" --help
+fi
+
+exec dotnet "$KIOTA_DLL" "$@"
+SH
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
